@@ -1,0 +1,7 @@
+**/target
+web
+docs
+.git
+.github
+**/*.iml
+.idea

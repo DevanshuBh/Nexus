@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+/* Design tokens (Tailwind v4, CSS-first). Light by default, dark via prefers-color-scheme. */
+@theme {
+  --color-canvas: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef1f5;
+  --color-line: #dde2e9;
+  --color-ink: #0f172a;
+  --color-muted: #556070;
+  --color-accent: #1d4ed8;
+  --color-accent-soft: #e0e8fd;
+  --color-on-accent: #ffffff;
+  --color-moving: #059669;
+  --color-idle: #d97706;
+  --color-stale: #64748b;
+  --color-danger: #b91c1c;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #0b1020;
+    --color-surface: #111827;
+    --color-surface-2: #1b2435;
+    --color-line: #263246;
+    --color-ink: #e5e9f0;
+    --color-muted: #9aa6b8;
+    --color-accent: #60a5fa;
+    --color-accent-soft: #1e2b47;
+    --color-on-accent: #0b1020;
+    --color-moving: #34d399;
+    --color-idle: #fbbf24;
+    --color-stale: #94a3b8;
+    --color-danger: #f87171;
+  }
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline-color: var(--color-accent);
+}
+
+/* MapLibre controls follow the theme. */
+.maplibregl-ctrl-group {
+  background: var(--color-surface) !important;
+  border: 1px solid var(--color-line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse {
+    animation: none;
+  }
+}

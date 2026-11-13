@@ -1,0 +1,34 @@
+server:
+  port: 8081
+  shutdown: graceful
+spring:
+  application:
+    name: nexus-query
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/nexus}
+    username: ${DB_USER:nexus}
+    password: ${DB_PASSWORD:nexus}
+    hikari:
+      maximum-pool-size: 8
+      read-only: true
+
+nexus:
+  query:
+    redis-url: ${REDIS_URL:redis://localhost:6379}
+    # Dev default only; set JWT_SECRET from a secret store anywhere shared.
+    jwt-secret: ${JWT_SECRET:dev-only-jwt-secret-change-me-0123456789}
+    dev-tokens: ${DEV_TOKENS:true}
+    cors-origins: ${CORS_ORIGINS:http://localhost:3000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
