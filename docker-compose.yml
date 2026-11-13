@@ -1,0 +1,161 @@
+# Full NEXUS stack on one machine.
+#   docker compose up -d --build                      # core stack + 200-truck simulator
+#   docker compose --profile observability up -d      # + Prometheus (:9090) and Grafana (:3001)
+# Ports: ingest :8080, query :8081, gateway ws://localhost:8090/ws, Kafka (host) :29092, Postgres :5432
+
+x-backend: &backend
+  image: nexus-backend:local
+  pull_policy: never          # built once by the writer service below; all backend services share the image
+  restart: unless-stopped
+  environment: &backend-env
+    KAFKA_BOOTSTRAP: kafka:9092
+    REDIS_URL: redis://redis:6379
+    DB_URL: jdbc:postgresql://timescaledb:5432/nexus
+    DB_USER: nexus
+    DB_PASSWORD: ${DB_PASSWORD:-nexus}
+    DEVICE_MASTER_KEY: ${DEVICE_MASTER_KEY:-dev-only-master-key-change-me-0123456789}
+    JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret-change-me-0123456789}
+    CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+
+services:
+  kafka:
+    image: apache/kafka:4.4.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller     # KRaft: the only mode since Kafka 4.0
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"   # topics are created explicitly, with a chosen partition count
+      KAFKA_LOG_RETENTION_HOURS: 72              # replay window; compression delay (7 d) is longer
+      KAFKA_HEAP_OPTS: -Xms512m -Xmx1g
+    ports: ["29092:29092"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+    mem_limit: 1536m
+
+  kafka-init:
+    image: apache/kafka:4.4.0
+    depends_on:
+      kafka: { condition: service_healthy }
+    # 12 partitions: parallelism for up to 12 writers with headroom. The count is effectively permanent:
+    # adding partitions later re-maps vehicleId -> partition and breaks per-truck ordering in flight.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic nexus.gps.v1 --partitions 12 --replication-factor 1 &&
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic nexus.gps.dlq --partitions 3 --replication-factor 1 --config retention.ms=1209600000
+    restart: "no"
+
+  timescaledb:
+    # Community build (Timescale License): the Apache-only "-oss" image lacks compression and continuous aggregates.
+    image: timescale/timescaledb:2.32.0-pg17
+    environment:
+      POSTGRES_DB: nexus
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-nexus}
+      TIMESCALEDB_TELEMETRY: "off"
+    command: ["postgres", "-c", "shared_buffers=512MB", "-c", "max_connections=100", "-c", "wal_compression=on"]
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus -d nexus"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    mem_limit: 2g
+
+  redis:
+    image: redis:8.8.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    mem_limit: 384m
+
+  writer:
+    <<: *backend
+    build: .
+    pull_policy: build
+    command: ["java", "-jar", "/app/nexus-writer.jar"]
+    environment:
+      <<: *backend-env
+      WRITER_BATCH_SIZE: "500"
+      WRITER_LINGER_MS: "500"
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      timescaledb: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    ports: ["9404:9404"]
+    stop_grace_period: 30s   # SIGTERM -> flush last batch, commit offsets
+    mem_limit: 768m
+
+  ingest:
+    <<: *backend
+    command: ["java", "-jar", "/app/nexus-ingest.jar"]
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    ports: ["8080:8080"]
+    mem_limit: 768m
+
+  query:
+    <<: *backend
+    command: ["java", "-jar", "/app/nexus-query.jar"]
+    depends_on:
+      timescaledb: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      writer: { condition: service_started }   # the writer owns the schema migrations
+    ports: ["8081:8081"]
+    mem_limit: 640m
+
+  gateway:
+    <<: *backend
+    command: ["java", "-jar", "/app/nexus-gateway.jar"]
+    depends_on:
+      redis: { condition: service_healthy }
+    ports: ["8090:8090", "9405:9405"]
+    mem_limit: 640m
+
+  simulator:
+    <<: *backend
+    command: ["java", "-jar", "/app/nexus-simulator.jar", "--target", "http://ingest:8080",
+              "--trucks", "${SIM_TRUCKS:-200}", "--fleets", "2", "--interval-ms", "3000",
+              "--malformed-pct", "0.5", "--offline-pct", "5", "--skew-ms", "1500"]
+    depends_on:
+      ingest: { condition: service_started }
+    mem_limit: 512m
+
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    profiles: ["observability"]
+    volumes:
+      - ./infra/prometheus:/etc/prometheus:ro
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:13.2.6
+    profiles: ["observability"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3001:3000"]
+
+volumes:
+  pgdata:

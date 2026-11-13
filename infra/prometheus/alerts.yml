@@ -1,0 +1,51 @@
+# Every alert links to a runbook in docs/runbooks/.
+groups:
+  - name: nexus
+    rules:
+      - alert: EventAgeP99High
+        expr: histogram_quantile(0.99, sum by (le) (rate(nexus_event_age_seconds_bucket[5m]))) > 10
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "p99 event age above 10 s (SLO)"
+          runbook: docs/runbooks/event-age-high.md
+
+      - alert: SinglePartitionLagHigh
+        # One partition far behind while others are not = hot key, not an overloaded writer.
+        expr: max by (partition) (kafka_consumer_fetch_manager_records_lag{topic="nexus.gps.v1"}) > 5000
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: "partition {{ $labels.partition }} lag above 5,000 records"
+          runbook: docs/runbooks/partition-lag.md
+
+      - alert: DeadLetterRate
+        expr: rate(nexus_writer_events_dlq_total[10m]) > 1
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: "more than 1 event/s going to the DLQ"
+          runbook: docs/runbooks/dlq-rate.md
+
+      - alert: WriterPaused
+        expr: max(nexus_writer_paused) == 1
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "writer paused: database unhealthy for 2 minutes"
+          runbook: docs/runbooks/writer-paused.md
+
+      - alert: WriterStuck
+        expr: max(nexus_writer_stuck) == 1
+        labels: { severity: page }
+        annotations:
+          summary: "writer stopped consuming after repeated unknown DB errors"
+          runbook: docs/runbooks/writer-paused.md
+
+      - alert: IngestUnavailable
+        expr: rate(nexus_ingest_unavailable_total[5m]) > 0.5
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "ingest answering 503: Kafka not accepting writes"
+          runbook: docs/runbooks/ingest-503.md

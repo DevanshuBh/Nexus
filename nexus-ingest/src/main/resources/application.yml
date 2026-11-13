@@ -1,0 +1,36 @@
+server:
+  port: 8080
+  shutdown: graceful
+  tomcat:
+    max-swallow-size: 1MB
+spring:
+  application:
+    name: nexus-ingest
+  threads:
+    virtual:
+      enabled: true   # request threads block on Kafka acks; virtual threads make that cheap
+
+nexus:
+  ingest:
+    kafka-bootstrap: ${KAFKA_BOOTSTRAP:localhost:9092}
+    topic: ${GPS_TOPIC:nexus.gps.v1}
+    redis-url: ${REDIS_URL:redis://localhost:6379}
+    # Dev default only. In any shared environment this comes from a secret (see docs/runbooks/rotate-device-keys.md).
+    device-master-key: ${DEVICE_MASTER_KEY:dev-only-master-key-change-me-0123456789}
+    current-key-version: ${DEVICE_KEY_VERSION:1}
+    request-window: 5m
+    max-future-skew: 30s
+    max-event-age: 7d
+    ack-timeout: 5s
+    max-pings-per-request: 1000
+    device-pings-per-second: ${DEVICE_RATE_LIMIT:2.0}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
