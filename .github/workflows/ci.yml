@@ -63,6 +63,9 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Registry names must be lowercase; GitHub owners may not be.
+      - name: Image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/nexus-backend" >> "$GITHUB_ENV"
       # amd64 for laptops/CI, arm64 for the Oracle Ampere free-tier VM
       - uses: docker/build-push-action@v6
         with:
@@ -70,7 +73,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/nexus-backend:${{ github.sha }}
-            ghcr.io/${{ github.repository_owner }}/nexus-backend:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
