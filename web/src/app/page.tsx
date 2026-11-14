@@ -55,7 +55,7 @@ export default function Home() {
         </span>
         <nav className="flex items-center gap-4 text-sm">
           <a href={REPO_URL} className="text-muted hover:text-ink">Source</a>
-          <Link href="/console/" className="rounded-md bg-accent px-3 py-1.5 font-medium text-on-accent hover:opacity-90">Open console</Link>
+          <Link href="/console/" prefetch={false} className="rounded-md bg-accent px-3 py-1.5 font-medium text-on-accent hover:opacity-90">Open console</Link>
         </nav>
       </header>
 
@@ -71,7 +71,7 @@ export default function Home() {
             outages.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/console/" className="rounded-lg bg-accent px-5 py-2.5 font-medium text-on-accent hover:opacity-90">
+            <Link href="/console/" prefetch={false} className="rounded-lg bg-accent px-5 py-2.5 font-medium text-on-accent hover:opacity-90">
               Open the live console →
             </Link>
             <a href={REPO_URL} className="rounded-lg border border-line bg-surface px-5 py-2.5 font-medium hover:bg-surface-2">
@@ -141,7 +141,7 @@ export default function Home() {
           <div>
             <h2 className="text-2xl font-semibold tracking-tight">Run it yourself</h2>
             <pre className="mt-6 overflow-x-auto rounded-xl border border-line bg-surface p-4 text-sm leading-relaxed"><code>{`git clone ${REPO_URL}
-cd nexus
+cd Nexus
 docker compose up -d --build     # Kafka, TimescaleDB, Redis, 4 services, 200 trucks
 cd web && npm ci
 NEXT_PUBLIC_QUERY_URL=http://localhost:8081 \\

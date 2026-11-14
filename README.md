@@ -3,7 +3,7 @@
 NEXUS ingests signed GPS telemetry from thousands of trucks, streams it through Kafka into TimescaleDB, and pushes live
 positions to a WebGL dispatcher console. It stays correct through crashes, redeliveries, bad data and outages.
 
-**Live demo:** _add your Vercel URL here_ · the hosted console simulates a fleet in your browser; run the stack below for live data.
+**Live demo:** https://devanshubh.github.io/Nexus/ · the hosted console simulates a fleet in your browser; run the stack below for live data.
 
 ![Dispatcher console](docs/img/console.png)
 
